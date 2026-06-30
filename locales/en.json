@@ -1,0 +1,27 @@
+{
+  "ui": {
+    "addCondition": "Add condition",
+    "remove": "Remove",
+    "field": "Field",
+    "operator": "Operator",
+    "value": "Value",
+    "emptyFields": "No filter fields."
+  },
+  "operators": {
+    "equals": "Equals",
+    "notEquals": "Does not equal",
+    "contains": "Contains",
+    "startsWith": "Starts with",
+    "endsWith": "Ends with",
+    "greaterThan": "Greater than",
+    "greaterThanOrEqual": "Greater than or equal",
+    "lessThan": "Less than",
+    "lessThanOrEqual": "Less than or equal",
+    "before": "Before",
+    "after": "After"
+  },
+  "boolean": {
+    "true": "Yes",
+    "false": "No"
+  }
+}

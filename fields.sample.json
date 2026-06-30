@@ -1,0 +1,69 @@
+[
+  {
+    "key": "keyword",
+    "label": {
+      "ja": "キーワード",
+      "en": "Keyword"
+    },
+    "type": "text",
+    "placeholder": {
+      "ja": "検索語を入力",
+      "en": "Enter keyword"
+    }
+  },
+  {
+    "key": "status",
+    "label": {
+      "ja": "ステータス",
+      "en": "Status"
+    },
+    "type": "select",
+    "options": [
+      {
+        "value": "open",
+        "label": {
+          "ja": "未対応",
+          "en": "Open"
+        }
+      },
+      {
+        "value": "progress",
+        "label": {
+          "ja": "対応中",
+          "en": "In progress"
+        }
+      },
+      {
+        "value": "closed",
+        "label": {
+          "ja": "完了",
+          "en": "Closed"
+        }
+      }
+    ]
+  },
+  {
+    "key": "price",
+    "label": {
+      "ja": "価格",
+      "en": "Price"
+    },
+    "type": "number"
+  },
+  {
+    "key": "publishedAt",
+    "label": {
+      "ja": "公開日",
+      "en": "Published date"
+    },
+    "type": "date"
+  },
+  {
+    "key": "featured",
+    "label": {
+      "ja": "おすすめ",
+      "en": "Featured"
+    },
+    "type": "boolean"
+  }
+]

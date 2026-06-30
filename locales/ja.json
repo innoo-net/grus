@@ -1,0 +1,27 @@
+{
+  "ui": {
+    "addCondition": "条件を追加",
+    "remove": "削除",
+    "field": "項目",
+    "operator": "条件",
+    "value": "値",
+    "emptyFields": "フィルター項目がありません。"
+  },
+  "operators": {
+    "equals": "等しい",
+    "notEquals": "等しくない",
+    "contains": "含む",
+    "startsWith": "から始まる",
+    "endsWith": "で終わる",
+    "greaterThan": "より大きい",
+    "greaterThanOrEqual": "以上",
+    "lessThan": "より小さい",
+    "lessThanOrEqual": "以下",
+    "before": "より前",
+    "after": "より後"
+  },
+  "boolean": {
+    "true": "はい",
+    "false": "いいえ"
+  }
+}

@@ -1,0 +1,116 @@
+.grus {
+  --grus-bg: #ffffff;
+  --grus-border: #e5e7eb;
+  --grus-text: #111827;
+  --grus-muted: #6b7280;
+  --grus-focus: #2563eb;
+  --grus-soft: #f9fafb;
+  --grus-danger: #dc2626;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 16px;
+  border: 1px solid var(--grus-border);
+  border-radius: 18px;
+  background: var(--grus-bg);
+  color: var(--grus-text);
+  box-shadow: 0 16px 40px rgba(17, 24, 39, 0.08);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.grus *, .grus *::before, .grus *::after {
+  box-sizing: border-box;
+}
+
+.grus-body {
+  display: grid;
+  gap: 10px;
+}
+
+.grus-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(140px, 0.9fr) minmax(160px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--grus-border);
+  border-radius: 14px;
+  background: var(--grus-soft);
+}
+
+.grus-control {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--grus-border);
+  border-radius: 12px;
+  background: #ffffff;
+  color: var(--grus-text);
+  font: inherit;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.grus-control:focus {
+  border-color: var(--grus-focus);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+}
+
+.grus-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.grus-add,
+.grus-remove {
+  min-height: 40px;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  cursor: pointer;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+
+.grus-add:hover,
+.grus-remove:hover {
+  transform: translateY(-1px);
+}
+
+.grus-add:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.grus-add {
+  padding: 0 16px;
+  background: var(--grus-focus);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.grus-remove {
+  padding: 0 12px;
+  background: #fee2e2;
+  color: var(--grus-danger);
+  font-weight: 700;
+}
+
+.grus-empty {
+  margin: 0;
+  color: var(--grus-muted);
+}
+
+@media (max-width: 760px) {
+  .grus-row {
+    grid-template-columns: 1fr;
+  }
+
+  .grus-actions {
+    justify-content: stretch;
+  }
+
+  .grus-add,
+  .grus-remove {
+    width: 100%;
+  }
+}
