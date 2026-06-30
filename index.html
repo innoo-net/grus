@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="./dist/grus.css">
   <style>
     body {
-      max-width: 920px;
+      max-width: 980px;
       margin: 48px auto;
       padding: 0 18px;
       background: #f3f4f6;
@@ -25,21 +25,29 @@
 </head>
 <body>
   <h1>grus</h1>
-  <p>JSON定義から生成する、素のJavaScript製の条件ビルダーです。</p>
+  <p>JSON定義から生成する、素のJavaScript製の条件ビルダーです。AND / OR グループ化とネスト条件に対応しています。</p>
   <div id="grus-builder"></div>
   <h2>出力</h2>
-  <pre id="output">[]</pre>
+  <pre id="output">{}</pre>
 
-  <script src="./dist/grus.loader.js"
-    data-grus-auto="true"
-    data-grus-lang="ja"
-    data-grus-locale-base-url="./locales"
-    data-grus-fields-url="./fields.sample.json"
-    data-grus-target="#grus-builder"></script>
-
+  <script src="./dist/grus.loader.js"></script>
   <script>
-    document.getElementById('grus-builder').addEventListener('grus:change', function (event) {
-      document.getElementById('output').textContent = JSON.stringify(event.detail, null, 2);
+    var output = document.getElementById('output');
+    var builderElement = document.getElementById('grus-builder');
+
+    GrusLoader.load({
+      lang: 'ja',
+      coreUrl: './dist/grus.core.js',
+      localeBaseUrl: './locales',
+      fieldsUrl: './fields.sample.json',
+      target: '#grus-builder'
+    }).then(function (builder) {
+      builder.addCondition();
+      output.textContent = JSON.stringify(builder.getValue(), null, 2);
+
+      builderElement.addEventListener('grus:change', function (event) {
+        output.textContent = JSON.stringify(event.detail, null, 2);
+      });
     });
   </script>
 </body>

@@ -1,15 +1,24 @@
 (function (global) {
   'use strict';
 
-  var VERSION = '0.1.0';
+  var VERSION = '0.2.0';
+  var ROOT_PATH = [];
   var DEFAULT_LOCALE = {
     ui: {
       addCondition: '条件を追加',
+      addGroup: 'グループを追加',
       remove: '削除',
+      removeGroup: 'グループ削除',
       field: '項目',
       operator: '条件',
       value: '値',
-      emptyFields: 'フィルター項目がありません。'
+      conjunction: '結合',
+      emptyFields: 'フィルター項目がありません。',
+      emptyGroup: 'このグループには条件がありません。'
+    },
+    conjunctions: {
+      and: 'すべて満たす（AND）',
+      or: 'いずれかを満たす（OR）'
     },
     operators: {
       equals: '等しい',
@@ -23,6 +32,10 @@
       lessThanOrEqual: '以下',
       before: 'より前',
       after: 'より後'
+    },
+    boolean: {
+      true: 'はい',
+      false: 'いいえ'
     }
   };
 
@@ -87,6 +100,30 @@
    */
   function _assertArray(value, name) {
     _assert(Array.isArray(value), name + ' must be an array.');
+  }
+
+  /**
+   * Returns true when a value is a valid node path.
+   * @param {*} value Value to check.
+   * @returns {boolean} Whether the value is a path.
+   */
+  function _isPath(value) {
+    return Array.isArray(value) && value.every(function (item) {
+      return typeof item === 'number' && item >= 0 && Math.floor(item) === item;
+    });
+  }
+
+  /**
+   * Normalizes an optional node path.
+   * @param {Array<number>=} path Raw path.
+   * @returns {Array<number>} Normalized path.
+   */
+  function _normalizePath(path) {
+    if (path === undefined || path === null) {
+      return ROOT_PATH.slice();
+    }
+    _assert(_isPath(path), 'path must be an array of positive integer indexes.');
+    return path.slice();
   }
 
   /**
@@ -275,6 +312,44 @@
   }
 
   /**
+   * Returns a normalized conjunction.
+   * @param {*} value Raw conjunction.
+   * @returns {string} Normalized conjunction.
+   */
+  function _normalizeConjunction(value) {
+    return String(value || 'and').toLowerCase() === 'or' ? 'or' : 'and';
+  }
+
+  /**
+   * Creates a default condition node.
+   * @param {Array<Object>} fields Fields.
+   * @returns {Object} Condition node.
+   */
+  function _createDefaultCondition(fields) {
+    var field = fields[0];
+    _assert(!!field, 'fields must not be empty.');
+    return {
+      type: 'condition',
+      key: field.key,
+      operator: field.operators[0],
+      value: _getDefaultValue(field)
+    };
+  }
+
+  /**
+   * Creates an empty group node.
+   * @param {string=} conjunction Group conjunction.
+   * @returns {Object} Group node.
+   */
+  function _createEmptyGroup(conjunction) {
+    return {
+      type: 'group',
+      conjunction: _normalizeConjunction(conjunction),
+      children: []
+    };
+  }
+
+  /**
    * Normalizes a condition object.
    * @param {Object} condition Raw condition.
    * @param {Array<Object>} fields Fields.
@@ -287,6 +362,7 @@
     field = _findField(fields, condition.key);
     _assert(!!field, 'condition.key does not match fields: ' + condition.key);
     return {
+      type: 'condition',
       key: condition.key,
       operator: field.operators.indexOf(condition.operator) !== -1 ? condition.operator : field.operators[0],
       value: condition.value === undefined || condition.value === null ? _getDefaultValue(field) : String(condition.value)
@@ -294,19 +370,112 @@
   }
 
   /**
-   * Normalizes initial conditions.
-   * @param {Array<Object>} value Raw conditions.
+   * Normalizes a rule node.
+   * @param {Object} node Raw node.
    * @param {Array<Object>} fields Fields.
-   * @returns {Array<Object>} Normalized conditions.
+   * @returns {Object} Normalized node.
    */
-  function _normalizeConditions(value, fields) {
-    if (value === undefined || value === null) {
-      return [];
+  function _normalizeNode(node, fields) {
+    _assertObject(node, 'node');
+    if (node.type === 'group' || Array.isArray(node.children)) {
+      return _normalizeGroup(node, fields);
     }
-    _assertArray(value, 'value');
-    return value.map(function (condition) {
-      return _normalizeCondition(condition, fields);
-    });
+    return _normalizeCondition(node, fields);
+  }
+
+  /**
+   * Normalizes a group node.
+   * @param {Object} group Raw group.
+   * @param {Array<Object>} fields Fields.
+   * @returns {Object} Normalized group.
+   */
+  function _normalizeGroup(group, fields) {
+    _assertObject(group, 'group');
+    _assertArray(group.children || [], 'group.children');
+    return {
+      type: 'group',
+      conjunction: _normalizeConjunction(group.conjunction),
+      children: (group.children || []).map(function (child) {
+        return _normalizeNode(child, fields);
+      })
+    };
+  }
+
+  /**
+   * Normalizes initial builder value.
+   * @param {Object|Array<Object>|undefined|null} value Raw value.
+   * @param {Array<Object>} fields Fields.
+   * @returns {Object} Normalized root group.
+   */
+  function _normalizeValue(value, fields) {
+    if (value === undefined || value === null) {
+      return _createEmptyGroup('and');
+    }
+    if (Array.isArray(value)) {
+      return _normalizeGroup({ type: 'group', conjunction: 'and', children: value }, fields);
+    }
+    _assertObject(value, 'value');
+    return _normalizeGroup(value, fields);
+  }
+
+  /**
+   * Creates a serializable clone of a condition.
+   * @param {Object} condition Condition node.
+   * @returns {Object} Cloned condition.
+   */
+  function _serializeCondition(condition) {
+    return {
+      type: 'condition',
+      key: condition.key,
+      operator: condition.operator,
+      value: condition.value
+    };
+  }
+
+  /**
+   * Creates a serializable clone of a group.
+   * @param {Object} group Group node.
+   * @returns {Object} Cloned group.
+   */
+  function _serializeGroup(group) {
+    return {
+      type: 'group',
+      conjunction: group.conjunction,
+      children: group.children.map(function (child) {
+        return child.type === 'group' ? _serializeGroup(child) : _serializeCondition(child);
+      })
+    };
+  }
+
+  /**
+   * Finds a node by path.
+   * @param {Object} root Root group.
+   * @param {Array<number>} path Node path.
+   * @returns {Object} Found node.
+   */
+  function _findNodeByPath(root, path) {
+    var current = root;
+    var index;
+    for (index = 0; index < path.length; index += 1) {
+      _assert(current && current.type === 'group', 'path parent must be a group.');
+      _assert(path[index] < current.children.length, 'path is out of range.');
+      current = current.children[path[index]];
+    }
+    return current;
+  }
+
+  /**
+   * Finds a parent group and child index by node path.
+   * @param {Object} root Root group.
+   * @param {Array<number>} path Node path.
+   * @returns {Object} Parent metadata.
+   */
+  function _findParentByPath(root, path) {
+    _assert(path.length > 0, 'root node cannot be removed.');
+    return {
+      parent: _findNodeByPath(root, path.slice(0, -1)),
+      index: path[path.length - 1]
+    };
   }
 
   /**
@@ -328,13 +497,29 @@
    * @returns {void}
    */
   function _emitChange(instance) {
+    var value = instance.getValue();
     var event = new CustomEvent('grus:change', {
-      detail: instance.getValue()
+      detail: value
     });
     instance.target.dispatchEvent(event);
     if (typeof instance.onChange === 'function') {
-      instance.onChange(instance.getValue(), instance);
+      instance.onChange(value, instance);
     }
+  }
+
+  /**
+   * Updates a condition node by path.
+   * @param {Object} instance Builder instance.
+   * @param {Array<number>} path Condition path.
+   * @param {Object} patch Partial condition values.
+   * @returns {void}
+   */
+  function _updateCondition(instance, path, patch) {
+    var condition = _findNodeByPath(instance.root, path);
+    _assert(condition.type === 'condition', 'path must point to a condition.');
+    Object.keys(patch).forEach(function (key) {
+      condition[key] = patch[key];
+    });
   }
 
   /**
@@ -342,10 +527,10 @@
    * @param {Object} instance Builder instance.
    * @param {Object} condition Condition.
    * @param {Object} field Field.
-   * @param {number} index Condition index.
+   * @param {Array<number>} path Condition path.
    * @returns {HTMLElement} Value input element.
    */
-  function _createValueControl(instance, condition, field, index) {
+  function _createValueControl(instance, condition, field, path) {
     var input;
     var lang = instance.lang;
 
@@ -367,11 +552,11 @@
     input.value = condition.value;
     input.setAttribute('aria-label', _getLocaleText(instance.locale, 'ui.value', 'Value'));
     input.addEventListener('change', function () {
-      instance.conditions[index].value = input.value;
+      _updateCondition(instance, path, { value: input.value });
       _emitChange(instance);
     });
     input.addEventListener('input', function () {
-      instance.conditions[index].value = input.value;
+      _updateCondition(instance, path, { value: input.value });
       _emitChange(instance);
     });
     return input;
@@ -381,10 +566,10 @@
    * Builds a field select control.
    * @param {Object} instance Builder instance.
    * @param {Object} condition Condition.
-   * @param {number} index Condition index.
+   * @param {Array<number>} path Condition path.
    * @returns {HTMLSelectElement} Field select.
    */
-  function _createFieldControl(instance, condition, index) {
+  function _createFieldControl(instance, condition, path) {
     var select = _createElement('select', 'grus-control');
     var lang = instance.lang;
     instance.fields.forEach(function (field) {
@@ -394,11 +579,11 @@
     select.setAttribute('aria-label', _getLocaleText(instance.locale, 'ui.field', 'Field'));
     select.addEventListener('change', function () {
       var field = _findField(instance.fields, select.value);
-      instance.conditions[index] = {
+      _updateCondition(instance, path, {
         key: field.key,
         operator: field.operators[0],
         value: _getDefaultValue(field)
-      };
+      });
       instance.render();
       _emitChange(instance);
     });
@@ -410,10 +595,10 @@
    * @param {Object} instance Builder instance.
    * @param {Object} condition Condition.
    * @param {Object} field Field.
-   * @param {number} index Condition index.
+   * @param {Array<number>} path Condition path.
    * @returns {HTMLSelectElement} Operator select.
    */
-  function _createOperatorControl(instance, condition, field, index) {
+  function _createOperatorControl(instance, condition, field, path) {
     var select = _createElement('select', 'grus-control grus-operator');
     field.operators.forEach(function (operator) {
       select.appendChild(_createOption(operator, _getLocaleText(instance.locale, 'operators.' + operator, operator)));
@@ -421,7 +606,7 @@
     select.value = condition.operator;
     select.setAttribute('aria-label', _getLocaleText(instance.locale, 'ui.operator', 'Operator'));
     select.addEventListener('change', function () {
-      instance.conditions[index].operator = select.value;
+      _updateCondition(instance, path, { operator: select.value });
       _emitChange(instance);
     });
     return select;
@@ -431,24 +616,140 @@
    * Builds a condition row.
    * @param {Object} instance Builder instance.
    * @param {Object} condition Condition.
-   * @param {number} index Condition index.
+   * @param {Array<number>} path Condition path.
    * @returns {HTMLElement} Condition row.
    */
-  function _createConditionRow(instance, condition, index) {
+  function _createConditionRow(instance, condition, path) {
     var field = _findField(instance.fields, condition.key);
     var row = _createElement('div', 'grus-row');
     var removeButton = _createElement('button', 'grus-remove', _getLocaleText(instance.locale, 'ui.remove', 'Remove'));
 
     removeButton.type = 'button';
     removeButton.addEventListener('click', function () {
-      instance.removeCondition(index);
+      instance.removeNode(path);
     });
 
-    row.appendChild(_createFieldControl(instance, condition, index));
-    row.appendChild(_createOperatorControl(instance, condition, field, index));
-    row.appendChild(_createValueControl(instance, condition, field, index));
+    row.appendChild(_createFieldControl(instance, condition, path));
+    row.appendChild(_createOperatorControl(instance, condition, field, path));
+    row.appendChild(_createValueControl(instance, condition, field, path));
     row.appendChild(removeButton);
     return row;
+  }
+
+  /**
+   * Builds a conjunction select control.
+   * @param {Object} instance Builder instance.
+   * @param {Object} group Group node.
+   * @param {Array<number>} path Group path.
+   * @returns {HTMLSelectElement} Conjunction select.
+   */
+  function _createConjunctionControl(instance, group, path) {
+    var select = _createElement('select', 'grus-control grus-conjunction');
+    select.appendChild(_createOption('and', _getLocaleText(instance.locale, 'conjunctions.and', 'AND')));
+    select.appendChild(_createOption('or', _getLocaleText(instance.locale, 'conjunctions.or', 'OR')));
+    select.value = group.conjunction;
+    select.setAttribute('aria-label', _getLocaleText(instance.locale, 'ui.conjunction', 'Conjunction'));
+    select.addEventListener('change', function () {
+      _findNodeByPath(instance.root, path).conjunction = select.value;
+      _emitChange(instance);
+    });
+    return select;
+  }
+
+  /**
+   * Builds group action buttons.
+   * @param {Object} instance Builder instance.
+   * @param {Array<number>} path Group path.
+   * @param {boolean} isRoot Whether this group is root.
+   * @returns {HTMLElement} Actions element.
+   */
+  function _createGroupActions(instance, path, isRoot) {
+    var actions = _createElement('div', 'grus-group-actions');
+    var addConditionButton = _createElement('button', 'grus-add', _getLocaleText(instance.locale, 'ui.addCondition', 'Add condition'));
+    var addGroupButton = _createElement('button', 'grus-add grus-add-secondary', _getLocaleText(instance.locale, 'ui.addGroup', 'Add group'));
+    var removeGroupButton;
+
+    addConditionButton.type = 'button';
+    addConditionButton.disabled = instance.fields.length === 0;
+    addConditionButton.addEventListener('click', function () {
+      instance.addCondition(path);
+    });
+
+    addGroupButton.type = 'button';
+    addGroupButton.addEventListener('click', function () {
+      instance.addGroup(path);
+    });
+
+    actions.appendChild(addConditionButton);
+    actions.appendChild(addGroupButton);
+
+    if (!isRoot) {
+      removeGroupButton = _createElement('button', 'grus-remove', _getLocaleText(instance.locale, 'ui.removeGroup', 'Remove group'));
+      removeGroupButton.type = 'button';
+      removeGroupButton.addEventListener('click', function () {
+        instance.removeNode(path);
+      });
+      actions.appendChild(removeGroupButton);
+    }
+
+    return actions;
+  }
+
+  /**
+   * Builds a group header.
+   * @param {Object} instance Builder instance.
+   * @param {Object} group Group node.
+   * @param {Array<number>} path Group path.
+   * @param {boolean} isRoot Whether this group is root.
+   * @returns {HTMLElement} Group header.
+   */
+  function _createGroupHeader(instance, group, path, isRoot) {
+    var header = _createElement('div', 'grus-group-header');
+    var label = _createElement('span', 'grus-group-label', isRoot ? 'ROOT' : 'GROUP');
+    header.appendChild(label);
+    header.appendChild(_createConjunctionControl(instance, group, path));
+    header.appendChild(_createGroupActions(instance, path, isRoot));
+    return header;
+  }
+
+  /**
+   * Builds a child node element.
+   * @param {Object} instance Builder instance.
+   * @param {Object} node Node.
+   * @param {Array<number>} path Node path.
+   * @returns {HTMLElement} Node element.
+   */
+  function _createNodeElement(instance, node, path) {
+    if (node.type === 'group') {
+      return _createGroupElement(instance, node, path, false);
+    }
+    return _createConditionRow(instance, node, path);
+  }
+
+  /**
+   * Builds a group element recursively.
+   * @param {Object} instance Builder instance.
+   * @param {Object} group Group node.
+   * @param {Array<number>} path Group path.
+   * @param {boolean} isRoot Whether this group is root.
+   * @returns {HTMLElement} Group element.
+   */
+  function _createGroupElement(instance, group, path, isRoot) {
+    var groupElement = _createElement('div', isRoot ? 'grus-group grus-root-group' : 'grus-group');
+    var body = _createElement('div', 'grus-group-body');
+
+    groupElement.appendChild(_createGroupHeader(instance, group, path, isRoot));
+
+    if (group.children.length === 0) {
+      body.appendChild(_createElement('p', 'grus-empty', _getLocaleText(instance.locale, 'ui.emptyGroup', 'This group is empty.')));
+    }
+
+    group.children.forEach(function (child, index) {
+      body.appendChild(_createNodeElement(instance, child, path.concat(index)));
+    });
+
+    groupElement.appendChild(body);
+    return groupElement;
   }
 
   /**
@@ -458,29 +759,13 @@
    */
   function _render(instance) {
     var container = _createElement('div', 'grus');
-    var body = _createElement('div', 'grus-body');
-    var actions = _createElement('div', 'grus-actions');
-    var addButton = _createElement('button', 'grus-add', _getLocaleText(instance.locale, 'ui.addCondition', 'Add condition'));
-
     _clearElement(instance.target);
 
     if (instance.fields.length === 0) {
-      body.appendChild(_createElement('p', 'grus-empty', _getLocaleText(instance.locale, 'ui.emptyFields', 'No fields.')));
+      container.appendChild(_createElement('p', 'grus-empty', _getLocaleText(instance.locale, 'ui.emptyFields', 'No fields.')));
     }
 
-    instance.conditions.forEach(function (condition, index) {
-      body.appendChild(_createConditionRow(instance, condition, index));
-    });
-
-    addButton.type = 'button';
-    addButton.addEventListener('click', function () {
-      instance.addCondition();
-    });
-    addButton.disabled = instance.fields.length === 0;
-    actions.appendChild(addButton);
-
-    container.appendChild(body);
-    container.appendChild(actions);
+    container.appendChild(_createGroupElement(instance, instance.root, ROOT_PATH.slice(), true));
     instance.target.appendChild(container);
   }
 
@@ -509,6 +794,16 @@
   }
 
   /**
+   * Validates and normalizes a condition tree.
+   * @param {Object|Array<Object>} value Condition tree or legacy condition array.
+   * @param {Array<Object>} fields Field definitions.
+   * @returns {Object} Normalized condition tree.
+   */
+  function validateValue(value, fields) {
+    return _normalizeValue(value, _normalizeFields(fields || []));
+  }
+
+  /**
    * Sets the global locale.
    * @param {Object} locale Locale JSON.
    * @returns {Object} Merged locale.
@@ -532,7 +827,7 @@
    * @param {Object} options Builder options.
    * @param {string|HTMLElement} options.target Mount target selector or element.
    * @param {Array<Object>} options.fields Filter field definitions.
-   * @param {Array<Object>=} options.value Initial conditions.
+   * @param {Object|Array<Object>=} options.value Initial condition tree or legacy condition array.
    * @param {Object=} options.locale Locale object.
    * @param {string=} options.lang Language code used for field label maps.
    * @param {Function=} options.onChange Change callback.
@@ -553,64 +848,86 @@
       version: VERSION,
       target: target,
       fields: fields,
-      conditions: _normalizeConditions(options.value, fields),
+      root: _normalizeValue(options.value, fields),
       locale: locale,
       lang: typeof options.lang === 'string' ? options.lang : 'ja',
       onChange: options.onChange,
 
       /**
-       * Adds a new condition row.
+       * Adds a new condition to a group.
+       * @param {Array<number>=} parentPath Parent group path. Defaults to root.
        * @returns {Object} Builder instance.
        */
-      addCondition: function () {
-        var field = this.fields[0];
-        if (!field) {
+      addCondition: function (parentPath) {
+        var path = _normalizePath(parentPath);
+        var parent = _findNodeByPath(this.root, path);
+        _assert(parent.type === 'group', 'parentPath must point to a group.');
+        if (this.fields.length === 0) {
           return this;
         }
-        this.conditions.push({
-          key: field.key,
-          operator: field.operators[0],
-          value: _getDefaultValue(field)
-        });
+        parent.children.push(_createDefaultCondition(this.fields));
         this.render();
         _emitChange(this);
         return this;
       },
 
       /**
-       * Removes a condition row.
-       * @param {number} index Condition index.
+       * Adds a new child group to a group.
+       * @param {Array<number>=} parentPath Parent group path. Defaults to root.
+       * @param {string=} conjunction Group conjunction: and or or.
+       * @returns {Object} Builder instance.
+       */
+      addGroup: function (parentPath, conjunction) {
+        var path = _normalizePath(parentPath);
+        var parent = _findNodeByPath(this.root, path);
+        _assert(parent.type === 'group', 'parentPath must point to a group.');
+        parent.children.push(_createEmptyGroup(conjunction || 'and'));
+        this.render();
+        _emitChange(this);
+        return this;
+      },
+
+      /**
+       * Removes a node by path.
+       * @param {Array<number>} path Node path.
+       * @returns {Object} Builder instance.
+       */
+      removeNode: function (path) {
+        var normalizedPath = _normalizePath(path);
+        var result = _findParentByPath(this.root, normalizedPath);
+        _assert(result.parent.type === 'group', 'parent must be a group.');
+        _assert(result.index < result.parent.children.length, 'path is out of range.');
+        result.parent.children.splice(result.index, 1);
+        this.render();
+        _emitChange(this);
+        return this;
+      },
+
+      /**
+       * Removes a root-level condition by index. Kept for backward compatibility.
+       * @param {number} index Root child index.
        * @returns {Object} Builder instance.
        */
       removeCondition: function (index) {
         _assert(typeof index === 'number' && index >= 0, 'index must be a positive number.');
-        this.conditions.splice(index, 1);
-        this.render();
-        _emitChange(this);
-        return this;
+        return this.removeNode([index]);
       },
 
       /**
-       * Returns a serializable condition array.
-       * @returns {Array<Object>} Current conditions.
+       * Returns a serializable condition tree.
+       * @returns {Object} Current condition tree.
        */
       getValue: function () {
-        return this.conditions.map(function (condition) {
-          return {
-            key: condition.key,
-            operator: condition.operator,
-            value: condition.value
-          };
-        });
+        return _serializeGroup(this.root);
       },
 
       /**
-       * Replaces current conditions.
-       * @param {Array<Object>} value New conditions.
+       * Replaces current condition tree.
+       * @param {Object|Array<Object>} value New condition tree or legacy condition array.
        * @returns {Object} Builder instance.
        */
       setValue: function (value) {
-        this.conditions = _normalizeConditions(value, this.fields);
+        this.root = _normalizeValue(value, this.fields);
         this.render();
         _emitChange(this);
         return this;
@@ -641,7 +958,7 @@
   /**
    * Serializes a builder instance.
    * @param {Object} instance Builder instance.
-   * @returns {Array<Object>} Current conditions.
+   * @returns {Object} Current condition tree.
    */
   function serialize(instance) {
     _assertObject(instance, 'instance');
@@ -664,6 +981,7 @@
     version: VERSION,
     createConditionBuilder: createConditionBuilder,
     validateFields: validateFields,
+    validateValue: validateValue,
     loadJson: loadJson,
     setLocale: setLocale,
     getLocale: getLocale,

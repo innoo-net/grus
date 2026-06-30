@@ -5,6 +5,7 @@
   --grus-muted: #6b7280;
   --grus-focus: #2563eb;
   --grus-soft: #f9fafb;
+  --grus-group: #f8fafc;
   --grus-danger: #dc2626;
   box-sizing: border-box;
   width: 100%;
@@ -21,9 +22,52 @@
   box-sizing: border-box;
 }
 
-.grus-body {
+.grus-group {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--grus-border);
+  border-radius: 16px;
+  background: var(--grus-group);
+}
+
+.grus-root-group {
+  background: #ffffff;
+}
+
+.grus-group-header {
+  display: grid;
+  grid-template-columns: auto minmax(180px, 260px) 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.grus-group-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.grus-group-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.grus-group-body {
   display: grid;
   gap: 10px;
+  padding-left: 16px;
+  border-left: 3px solid #dbeafe;
 }
 
 .grus-row {
@@ -50,15 +94,13 @@
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+.grus-conjunction {
+  font-weight: 700;
+}
+
 .grus-control:focus {
   border-color: var(--grus-focus);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
-}
-
-.grus-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 12px;
 }
 
 .grus-add,
@@ -88,6 +130,10 @@
   font-weight: 700;
 }
 
+.grus-add-secondary {
+  background: #111827;
+}
+
 .grus-remove {
   padding: 0 12px;
   background: #fee2e2;
@@ -101,16 +147,21 @@
 }
 
 @media (max-width: 760px) {
+  .grus-group-header,
   .grus-row {
     grid-template-columns: 1fr;
   }
 
-  .grus-actions {
+  .grus-group-actions {
     justify-content: stretch;
   }
 
   .grus-add,
   .grus-remove {
     width: 100%;
+  }
+
+  .grus-group-body {
+    padding-left: 10px;
   }
 }

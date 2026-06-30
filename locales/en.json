@@ -1,11 +1,19 @@
 {
   "ui": {
     "addCondition": "Add condition",
+    "addGroup": "Add group",
     "remove": "Remove",
+    "removeGroup": "Remove group",
     "field": "Field",
     "operator": "Operator",
     "value": "Value",
-    "emptyFields": "No filter fields."
+    "conjunction": "Conjunction",
+    "emptyFields": "No filter fields are available.",
+    "emptyGroup": "This group has no conditions."
+  },
+  "conjunctions": {
+    "and": "Match all (AND)",
+    "or": "Match any (OR)"
   },
   "operators": {
     "equals": "Equals",
