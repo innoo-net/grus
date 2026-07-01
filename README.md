@@ -328,10 +328,11 @@ GitHub Pages で公開する場合の例です。
 `coreUrl` は省略できます。`grus.loader.js` は次の順で `grus.core.js` のURLを決定します。
 
 ```text
-1. data-grus-core-url があればそれを使う
-2. GrusLoader.load({ coreUrl }) があればそれを使う
+1. GrusLoader.load({ coreUrl }) があればそれを使う
+2. data-grus-core-url があればそれを使う
 3. grus.loader.js 自身の src と同じディレクトリの grus.core.js を使う
-4. loader script が特定できない場合だけ ./grus.core.js を使う
+4. Apps Script などで script タグが隠れる場合は Error.stack から loader URL を補足する
+5. それでも特定できない場合だけ innoo-net/grus の jsDelivr CDN を使う
 ```
 
 たとえば、以下から読み込んだ場合は、
