@@ -10,6 +10,23 @@
   }
 
   /**
+   * Checks whether a script element is the grus loader script.
+   * @param {HTMLScriptElement|null} script Script element.
+   * @returns {boolean} Whether the script is the loader script.
+   */
+  function _isLoaderScript(script) {
+    if (!script) {
+      return false;
+    }
+    if (script.src && script.src.indexOf('grus.loader.js') !== -1) {
+      return true;
+    }
+    return Boolean(script.dataset && (script.dataset.grusAuto || script.dataset.grusTarget || script.dataset.grusCoreUrl));
+  }
+
+  var _loaderScript = _getCurrentScript();
+
+  /**
    * Returns the directory URL for a script source.
    * @param {string} src Script URL.
    * @returns {string} Directory URL.
@@ -215,7 +232,7 @@
    * @returns {Promise<Object|null>} Builder instance or null.
    */
   function load(userOptions) {
-    var scriptOptions = _readOptionsFromScript(_getCurrentScript());
+    var scriptOptions = _readOptionsFromScript(_loaderScript);
     var options = Object.assign({}, scriptOptions, userOptions || {});
     return _ensureCore(options.coreUrl)
       .then(function () { return _loadLocale(options); })
@@ -227,7 +244,8 @@
    * @returns {void}
    */
   function _autoLoad() {
-    var options = _readOptionsFromScript(_getCurrentScript());
+    var currentScript = _getCurrentScript();
+    var options = _readOptionsFromScript(_isLoaderScript(currentScript) ? currentScript : _loaderScript);
     if (options.auto) {
       load(options).catch(function (error) {
         console.error(error);

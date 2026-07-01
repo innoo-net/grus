@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>grus - Google Apps Script inline fields example</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/innoo-net/grus@master/dist/grus.css">
+</head>
+<body>
+  <div id="builder"></div>
+  <pre id="output"></pre>
+
+  <script src="https://cdn.jsdelivr.net/gh/innoo-net/grus@master/dist/grus.loader.js"></script>
+  <script>
+    var grusFields = [
+      { key: 'keyword', label: { ja: 'キーワード', en: 'Keyword' }, type: 'text' },
+      {
+        key: 'status',
+        label: { ja: 'ステータス', en: 'Status' },
+        type: 'select',
+        options: [
+          { value: 'open', label: { ja: '公開', en: 'Open' } },
+          { value: 'closed', label: { ja: '非公開', en: 'Closed' } }
+        ]
+      }
+    ];
+
+    GrusLoader.load({
+      lang: 'ja',
+      coreUrl: 'https://cdn.jsdelivr.net/gh/innoo-net/grus@master/dist/grus.core.js',
+      localeBaseUrl: 'https://cdn.jsdelivr.net/gh/innoo-net/grus@master/locales',
+      fields: grusFields,
+      target: '#builder',
+      urlSync: false,
+      onChange: function (value) {
+        document.getElementById('output').textContent = JSON.stringify(value, null, 2);
+      }
+    }).then(function (builder) {
+      if (builder.getValue().children.length === 0) {
+        builder.addCondition();
+      }
+      document.getElementById('output').textContent = JSON.stringify(builder.getValue(), null, 2);
+    });
+  </script>
+</body>
+</html>
