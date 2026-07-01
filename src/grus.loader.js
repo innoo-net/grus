@@ -10,6 +10,15 @@
   }
 
   /**
+   * Checks whether a value is a non-empty string.
+   * @param {*} value Value to check.
+   * @returns {boolean} Whether the value is a non-empty string.
+   */
+  function _isString(value) {
+    return typeof value === 'string' && value.length > 0;
+  }
+
+  /**
    * Checks whether a script element is the grus loader script.
    * @param {HTMLScriptElement|null} script Script element.
    * @returns {boolean} Whether the script is the loader script.
@@ -24,7 +33,46 @@
     return Boolean(script.dataset && (script.dataset.grusAuto || script.dataset.grusTarget || script.dataset.grusCoreUrl));
   }
 
-  var _loaderScript = _getCurrentScript();
+  /**
+   * Finds the grus loader script element.
+   * This is more reliable than document.currentScript in iframe/sandboxed hosts
+   * because load() may be called later from a different inline script.
+   * @returns {HTMLScriptElement|null} Loader script element.
+   */
+  function _findLoaderScript() {
+    var currentScript = _getCurrentScript();
+    var scripts;
+    var index;
+
+    if (_isLoaderScript(currentScript)) {
+      return currentScript;
+    }
+
+    scripts = document.getElementsByTagName('script');
+    for (index = scripts.length - 1; index >= 0; index -= 1) {
+      if (_isLoaderScript(scripts[index])) {
+        return scripts[index];
+      }
+    }
+
+    return null;
+  }
+
+  var _loaderScript = _findLoaderScript();
+
+  /**
+   * Resolves a URL against a base URL.
+   * @param {string} value URL or path.
+   * @param {string=} baseUrl Base URL.
+   * @returns {string} Resolved URL.
+   */
+  function _resolveUrl(value, baseUrl) {
+    try {
+      return new URL(value, baseUrl || document.baseURI).href;
+    } catch (error) {
+      return value;
+    }
+  }
 
   /**
    * Returns the directory URL for a script source.
@@ -32,19 +80,13 @@
    * @returns {string} Directory URL.
    */
   function _getBaseUrl(src) {
-    return src.split('/').slice(0, -1).join('/') + '/';
+    if (!_isString(src)) {
+      return './';
+    }
+    return _resolveUrl('.', src);
   }
 
-  /**
-   * Checks whether a value is a non-empty string.
-   * @param {*} value Value to check.
-   * @returns {boolean} Whether the value is a non-empty string.
-   */
-  function _isString(value) {
-    return typeof value === 'string' && value.length > 0;
-  }
-
-
+  
   /**
    * Checks whether a dataset value is true.
    * @param {*} value Value to check.
@@ -52,6 +94,39 @@
    */
   function _isTrue(value) {
     return String(value) === 'true';
+  }
+
+  /**
+   * Returns an option value if it is a non-empty string; otherwise returns a fallback value.
+   * @param {*} value Candidate value.
+   * @param {string} fallbackValue Fallback value.
+   * @returns {string} Resolved string value.
+   */
+  function _stringOrFallback(value, fallbackValue) {
+    return _isString(value) ? value : fallbackValue;
+  }
+
+  /**
+   * Resolves the default core URL from the loader script URL.
+   * @param {HTMLScriptElement|null} script Loader script element.
+   * @returns {string} Core script URL.
+   */
+  function _resolveDefaultCoreUrl(script) {
+    var baseUrl = script && script.src ? _getBaseUrl(script.src) : './';
+    return _resolveUrl('grus.core.js', baseUrl);
+  }
+
+  /**
+   * Resolves the default locale base URL from the loader script URL.
+   * @param {HTMLScriptElement|null} script Loader script element.
+   * @returns {string} Locale base URL.
+   */
+  function _resolveDefaultLocaleBaseUrl(script) {
+    var baseUrl = script && script.src ? _getBaseUrl(script.src) : './';
+    if (/\/dist\/$/.test(baseUrl)) {
+      return baseUrl.replace(/\/dist\/$/, '/locales/');
+    }
+    return _resolveUrl('locales/', baseUrl);
   }
 
   /**
@@ -169,13 +244,13 @@
    * @returns {Object} Loader options.
    */
   function _readOptionsFromScript(script) {
-    var baseUrl = script && script.src ? _getBaseUrl(script.src) : './';
-    var dataset = script ? script.dataset : {};
+    var loaderScript = script || _findLoaderScript();
+    var dataset = loaderScript ? loaderScript.dataset : {};
     return {
       lang: dataset.grusLang || 'ja',
       localeUrl: dataset.grusLocaleUrl || '',
-      localeBaseUrl: dataset.grusLocaleBaseUrl || baseUrl.replace(/dist\/$/, 'locales/'),
-      coreUrl: dataset.grusCoreUrl || baseUrl + 'grus.core.js',
+      localeBaseUrl: _stringOrFallback(dataset.grusLocaleBaseUrl, _resolveDefaultLocaleBaseUrl(loaderScript)),
+      coreUrl: _stringOrFallback(dataset.grusCoreUrl, _resolveDefaultCoreUrl(loaderScript)),
       fieldsUrl: dataset.grusFieldsUrl || '',
       fieldsVar: dataset.grusFieldsVar || '',
       target: dataset.grusTarget || '',
@@ -232,8 +307,23 @@
    * @returns {Promise<Object|null>} Builder instance or null.
    */
   function load(userOptions) {
-    var scriptOptions = _readOptionsFromScript(_loaderScript);
-    var options = Object.assign({}, scriptOptions, userOptions || {});
+    var scriptOptions;
+    var options;
+
+    if (!_loaderScript) {
+      _loaderScript = _findLoaderScript();
+    }
+
+    scriptOptions = _readOptionsFromScript(_loaderScript);
+    options = Object.assign({}, scriptOptions, userOptions || {});
+
+    if (!_isString(options.coreUrl)) {
+      options.coreUrl = _resolveDefaultCoreUrl(_loaderScript);
+    }
+    if (!_isString(options.localeBaseUrl) && !_isString(options.localeUrl)) {
+      options.localeBaseUrl = _resolveDefaultLocaleBaseUrl(_loaderScript);
+    }
+
     return _ensureCore(options.coreUrl)
       .then(function () { return _loadLocale(options); })
       .then(function () { return _mountWhenNeeded(options); });
@@ -254,7 +344,13 @@
   }
 
   global.GrusLoader = {
-    load: load
+    load: load,
+    resolveCoreUrl: function () {
+      if (!_loaderScript) {
+        _loaderScript = _findLoaderScript();
+      }
+      return _resolveDefaultCoreUrl(_loaderScript);
+    }
   };
 
   _autoLoad();
