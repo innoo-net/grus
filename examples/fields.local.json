@@ -1,0 +1,44 @@
+[
+  {
+    "key": "keyword",
+    "label": {
+      "ja": "キーワード",
+      "en": "Keyword"
+    },
+    "type": "text",
+    "options": []
+  },
+  {
+    "key": "status",
+    "label": {
+      "ja": "ステータス",
+      "en": "Status"
+    },
+    "type": "select",
+    "options": [
+      {
+        "value": "draft",
+        "label": {
+          "ja": "下書き",
+          "en": "Draft"
+        }
+      },
+      {
+        "value": "published",
+        "label": {
+          "ja": "公開済み",
+          "en": "Published"
+        }
+      }
+    ]
+  },
+  {
+    "key": "price",
+    "label": {
+      "ja": "価格",
+      "en": "Price"
+    },
+    "type": "number",
+    "options": []
+  }
+]

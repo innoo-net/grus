@@ -27,6 +27,16 @@
     return typeof value === 'string' && value.length > 0;
   }
 
+
+  /**
+   * Checks whether a dataset value is true.
+   * @param {*} value Value to check.
+   * @returns {boolean} Whether the value is true.
+   */
+  function _isTrue(value) {
+    return String(value) === 'true';
+  }
+
   /**
    * Appends a JavaScript file and resolves after it loads.
    * @param {string} src JavaScript URL.
@@ -78,6 +88,64 @@
     });
   }
 
+
+  /**
+   * Reads a global value by dot path.
+   * @param {string} path Global variable path, for example GRUS_FIELDS or window.App.fields.
+   * @returns {*} Resolved value.
+   */
+  function _getGlobalValue(path) {
+    var normalizedPath = String(path || '').replace(/^window\./, '');
+    var parts = normalizedPath.split('.').filter(function (part) { return part.length > 0; });
+    var value = global;
+    var index;
+
+    for (index = 0; index < parts.length; index += 1) {
+      if (value === undefined || value === null) {
+        return undefined;
+      }
+      value = value[parts[index]];
+    }
+
+    return value;
+  }
+
+  /**
+   * Resolves fields from inline options, a global variable, or a JSON URL.
+   * @param {Object} options Loader options.
+   * @returns {Promise<Array<Object>|null>} Resolved fields or null.
+   */
+  function _resolveFields(options) {
+    var fields;
+
+    if (Array.isArray(options.fields)) {
+      return Promise.resolve(options.fields);
+    }
+
+    if (_isString(options.fieldsVar)) {
+      fields = _getGlobalValue(options.fieldsVar);
+      if (!Array.isArray(fields)) {
+        return Promise.reject(new TypeError('[grus] fieldsVar must point to an array: ' + options.fieldsVar));
+      }
+      return Promise.resolve(fields);
+    }
+
+    if (_isString(options.fieldsUrl)) {
+      return global.Grus.loadJson(options.fieldsUrl);
+    }
+
+    return Promise.resolve(null);
+  }
+
+  /**
+   * Checks whether options include any field source.
+   * @param {Object} options Loader options.
+   * @returns {boolean} Whether a field source exists.
+   */
+  function _hasFieldSource(options) {
+    return Array.isArray(options.fields) || _isString(options.fieldsVar) || _isString(options.fieldsUrl);
+  }
+
   /**
    * Reads loader options from a script tag dataset.
    * @param {HTMLScriptElement|null} script Script tag.
@@ -92,8 +160,12 @@
       localeBaseUrl: dataset.grusLocaleBaseUrl || baseUrl.replace(/dist\/$/, 'locales/'),
       coreUrl: dataset.grusCoreUrl || baseUrl + 'grus.core.js',
       fieldsUrl: dataset.grusFieldsUrl || '',
+      fieldsVar: dataset.grusFieldsVar || '',
       target: dataset.grusTarget || '',
-      auto: dataset.grusAuto === 'true'
+      auto: _isTrue(dataset.grusAuto),
+      urlSync: _isTrue(dataset.grusUrlSync),
+      urlPathKey: dataset.grusUrlPathKey || 'filter',
+      urlUpdateMode: dataset.grusUrlUpdateMode || 'replace'
     };
   }
 
@@ -103,15 +175,23 @@
    * @returns {Promise<Object|null>} Builder instance or null.
    */
   function _mountWhenNeeded(options) {
-    if (!_isString(options.fieldsUrl) || !_isString(options.target)) {
+    if (!_isString(options.target) || !_hasFieldSource(options)) {
       return Promise.resolve(null);
     }
-    return global.Grus.loadJson(options.fieldsUrl).then(function (fields) {
+    return _resolveFields(options).then(function (fields) {
+      if (!fields) {
+        return null;
+      }
       return global.Grus.createConditionBuilder({
         target: options.target,
         fields: fields,
+        value: options.value,
         lang: options.lang,
-        locale: global.Grus.getLocale()
+        locale: global.Grus.getLocale(),
+        onChange: options.onChange,
+        urlSync: options.urlSync,
+        urlPathKey: options.urlPathKey,
+        urlUpdateMode: options.urlUpdateMode
       });
     });
   }
@@ -124,7 +204,14 @@
    * @param {string=} userOptions.localeBaseUrl Locale base URL.
    * @param {string=} userOptions.coreUrl Core JS URL.
    * @param {string=} userOptions.fieldsUrl Fields JSON URL.
+   * @param {Array<Object>=} userOptions.fields Inline field definitions.
+   * @param {string=} userOptions.fieldsVar Global variable path for field definitions.
    * @param {string|HTMLElement=} userOptions.target Auto-mount target.
+   * @param {Object|Array<Object>=} userOptions.value Initial condition tree or legacy condition array.
+   * @param {Function=} userOptions.onChange Change callback.
+   * @param {boolean|Object=} userOptions.urlSync URL path synchronization option.
+   * @param {string=} userOptions.urlPathKey URL path key segment. Defaults to filter.
+   * @param {string=} userOptions.urlUpdateMode URL update mode: replace or push.
    * @returns {Promise<Object|null>} Builder instance or null.
    */
   function load(userOptions) {

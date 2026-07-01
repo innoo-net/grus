@@ -1,7 +1,7 @@
 (function (global) {
   'use strict';
 
-  var VERSION = '0.2.0';
+  var VERSION = '0.3.0';
   var ROOT_PATH = [];
   var DEFAULT_LOCALE = {
     ui: {
@@ -320,6 +320,307 @@
     return String(value || 'and').toLowerCase() === 'or' ? 'or' : 'and';
   }
 
+
+  /**
+   * Returns true when a condition tree has at least one child node.
+   * @param {Object} value Condition tree.
+   * @returns {boolean} Whether the tree has children.
+   */
+  function _hasFilterValue(value) {
+    return _isPlainObject(value) && Array.isArray(value.children) && value.children.length > 0;
+  }
+
+  /**
+   * Safely decodes a URI component.
+   * @param {string} value URI component value.
+   * @returns {string} Decoded value or original value.
+   */
+  function _safeDecodeURIComponent(value) {
+    try {
+      return decodeURIComponent(value);
+    } catch (error) {
+      return value;
+    }
+  }
+
+  /**
+   * Converts UTF-8 text to a binary string for base64 encoding.
+   * @param {string} text Text value.
+   * @returns {string} Binary string.
+   */
+  function _textToBinary(text) {
+    var bytes;
+    var binary = '';
+    var index;
+
+    if (global.TextEncoder) {
+      bytes = new TextEncoder().encode(text);
+      for (index = 0; index < bytes.length; index += 1) {
+        binary += String.fromCharCode(bytes[index]);
+      }
+      return binary;
+    }
+
+    return unescape(encodeURIComponent(text));
+  }
+
+  /**
+   * Converts a binary string from base64 decoding to UTF-8 text.
+   * @param {string} binary Binary string.
+   * @returns {string} Text value.
+   */
+  function _binaryToText(binary) {
+    var bytes;
+    var index;
+
+    if (global.TextDecoder && global.Uint8Array) {
+      bytes = new Uint8Array(binary.length);
+      for (index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index);
+      }
+      return new TextDecoder().decode(bytes);
+    }
+
+    return decodeURIComponent(escape(binary));
+  }
+
+  /**
+   * Encodes text to a Base64URL segment.
+   * @param {string} text Text to encode.
+   * @returns {string} Base64URL encoded text.
+   */
+  function _encodeBase64Url(text) {
+    return btoa(_textToBinary(text)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  }
+
+  /**
+   * Decodes a Base64URL segment to text.
+   * @param {string} segment Base64URL segment.
+   * @returns {string} Decoded text.
+   */
+  function _decodeBase64Url(segment) {
+    var base64 = String(segment || '').replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4 !== 0) {
+      base64 += '=';
+    }
+    return _binaryToText(atob(base64));
+  }
+
+  /**
+   * Normalizes a URL path key.
+   * @param {*} pathKey Raw path key.
+   * @returns {string} Normalized path key.
+   */
+  function _normalizePathKey(pathKey) {
+    var key = String(pathKey || 'filter');
+    _assert(key.length > 0 && key.indexOf('/') === -1, 'url path key must be a non-empty path segment.');
+    return key;
+  }
+
+  /**
+   * Splits a path name into path segments.
+   * @param {string} pathname Path name.
+   * @returns {Array<string>} Path segments.
+   */
+  function _splitPathSegments(pathname) {
+    return String(pathname || '/').split('/').filter(function (segment) {
+      return segment.length > 0;
+    });
+  }
+
+  /**
+   * Joins path segments into an absolute path.
+   * @param {Array<string>} segments Path segments.
+   * @returns {string} Absolute path.
+   */
+  function _joinPathSegments(segments) {
+    return '/' + segments.join('/');
+  }
+
+  /**
+   * Finds the index of a path key segment.
+   * @param {Array<string>} segments Path segments.
+   * @param {string} pathKey Path key.
+   * @returns {number} Segment index or -1.
+   */
+  function _findPathKeyIndex(segments, pathKey) {
+    var index;
+    for (index = 0; index < segments.length; index += 1) {
+      if (segments[index] === pathKey || _safeDecodeURIComponent(segments[index]) === pathKey) {
+        return index;
+      }
+    }
+    return -1;
+  }
+
+  /**
+   * Encodes a condition tree for use in a URL path segment.
+   * @param {Object|Array<Object>} value Condition tree or legacy condition array.
+   * @returns {string} Encoded URL segment.
+   */
+  function encodeValue(value) {
+    return _encodeBase64Url(JSON.stringify(value));
+  }
+
+  /**
+   * Decodes a condition tree from a URL path segment.
+   * @param {string} segment Encoded URL segment.
+   * @returns {Object|Array<Object>} Decoded condition tree.
+   */
+  function decodeValue(segment) {
+    _assertString(segment, 'segment');
+    return JSON.parse(_decodeBase64Url(segment));
+  }
+
+  /**
+   * Removes a filter segment from a path.
+   * @param {string} pathname Path name.
+   * @param {string=} pathKey Path key segment. Defaults to filter.
+   * @returns {string} Path without filter segment.
+   */
+  function removeValueFromPath(pathname, pathKey) {
+    var key = _normalizePathKey(pathKey);
+    var segments = _splitPathSegments(pathname);
+    var index = _findPathKeyIndex(segments, key);
+
+    if (index === -1) {
+      return String(pathname || '/') || '/';
+    }
+
+    segments.splice(index, segments[index + 1] ? 2 : 1);
+    return _joinPathSegments(segments);
+  }
+
+  /**
+   * Creates a path containing an encoded condition tree.
+   * @param {string} pathname Base path name.
+   * @param {Object|Array<Object>} value Condition tree or legacy condition array.
+   * @param {string=} pathKey Path key segment. Defaults to filter.
+   * @returns {string} Path containing the encoded value.
+   */
+  function createPathWithValue(pathname, value, pathKey) {
+    var key = _normalizePathKey(pathKey);
+    var segments = _splitPathSegments(removeValueFromPath(pathname, key));
+    segments.push(key, encodeValue(value));
+    return _joinPathSegments(segments);
+  }
+
+  /**
+   * Parses a condition tree from a path.
+   * @param {string} pathname Path name.
+   * @param {string=} pathKey Path key segment. Defaults to filter.
+   * @returns {Object|Array<Object>|null} Parsed condition tree or null.
+   */
+  function parseValueFromPath(pathname, pathKey) {
+    var key = _normalizePathKey(pathKey);
+    var segments = _splitPathSegments(pathname);
+    var index = _findPathKeyIndex(segments, key);
+
+    if (index === -1 || !segments[index + 1]) {
+      return null;
+    }
+
+    return decodeValue(segments[index + 1]);
+  }
+
+  /**
+   * Normalizes URL synchronization options.
+   * @param {boolean|Object=} urlSync Raw URL sync option.
+   * @param {Object=} options Builder options.
+   * @returns {Object} Normalized URL sync options.
+   */
+  function _normalizeUrlSyncOptions(urlSync, options) {
+    var raw = _isPlainObject(urlSync) ? urlSync : {};
+    var enabled = urlSync === true || raw.enabled === true;
+    return {
+      enabled: enabled,
+      pathKey: _normalizePathKey(raw.pathKey || (options && options.urlPathKey) || 'filter'),
+      updateMode: raw.updateMode === 'push' || (options && options.urlUpdateMode === 'push') ? 'push' : 'replace',
+      readOnInit: raw.readOnInit !== false,
+      writeOnChange: raw.writeOnChange !== false,
+      removeWhenEmpty: raw.removeWhenEmpty !== false,
+      listenPopState: raw.listenPopState !== false
+    };
+  }
+
+  /**
+   * Reads a condition tree from the current browser path.
+   * @param {string} pathKey Path key segment.
+   * @returns {Object|Array<Object>|null} Parsed condition tree or null.
+   */
+  function _readValueFromLocation(pathKey) {
+    if (!global.location) {
+      return null;
+    }
+
+    try {
+      return parseValueFromPath(global.location.pathname, pathKey);
+    } catch (error) {
+      if (global.console && typeof global.console.warn === 'function') {
+        global.console.warn('[grus] Failed to parse filter from URL path.', error);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Writes a condition tree to the current browser path.
+   * @param {Object} instance Builder instance.
+   * @param {Object} value Condition tree.
+   * @returns {void}
+   */
+  function _writeValueToLocation(instance, value) {
+    var nextPath;
+    var nextUrl;
+    var method;
+
+    if (!instance.urlSync.enabled || !instance.urlSync.writeOnChange || !global.history || !global.location) {
+      return;
+    }
+
+    if (instance.urlSync.removeWhenEmpty && !_hasFilterValue(value)) {
+      nextPath = removeValueFromPath(global.location.pathname, instance.urlSync.pathKey);
+    } else {
+      nextPath = createPathWithValue(global.location.pathname, value, instance.urlSync.pathKey);
+    }
+
+    nextUrl = nextPath + global.location.search + global.location.hash;
+    if (nextUrl === global.location.pathname + global.location.search + global.location.hash) {
+      return;
+    }
+
+    method = instance.urlSync.updateMode === 'push' ? 'pushState' : 'replaceState';
+    global.history[method]({ grus: true }, '', nextUrl);
+  }
+
+  /**
+   * Binds popstate URL reading to a builder instance.
+   * @param {Object} instance Builder instance.
+   * @returns {void}
+   */
+  function _bindPopState(instance) {
+    if (!instance.urlSync.enabled || !instance.urlSync.listenPopState || !global.addEventListener) {
+      return;
+    }
+
+    instance._grusPopStateHandler = function () {
+      instance.loadFromUrl();
+    };
+    global.addEventListener('popstate', instance._grusPopStateHandler);
+  }
+
+  /**
+   * Unbinds popstate URL reading from a builder instance.
+   * @param {Object} instance Builder instance.
+   * @returns {void}
+   */
+  function _unbindPopState(instance) {
+    if (instance._grusPopStateHandler && global.removeEventListener) {
+      global.removeEventListener('popstate', instance._grusPopStateHandler);
+      instance._grusPopStateHandler = null;
+    }
+  }
+
   /**
    * Creates a default condition node.
    * @param {Array<Object>} fields Fields.
@@ -496,9 +797,15 @@
    * @param {Object} instance Builder instance.
    * @returns {void}
    */
-  function _emitChange(instance) {
+  function _emitChange(instance, shouldSyncUrl) {
     var value = instance.getValue();
-    var event = new CustomEvent('grus:change', {
+    var event;
+
+    if (shouldSyncUrl !== false) {
+      _writeValueToLocation(instance, value);
+    }
+
+    event = new CustomEvent('grus:change', {
       detail: value
     });
     instance.target.dispatchEvent(event);
@@ -831,27 +1138,44 @@
    * @param {Object=} options.locale Locale object.
    * @param {string=} options.lang Language code used for field label maps.
    * @param {Function=} options.onChange Change callback.
+   * @param {boolean|Object=} options.urlSync URL path synchronization option.
+   * @param {string=} options.urlPathKey URL path key segment. Defaults to filter.
+   * @param {string=} options.urlUpdateMode URL update mode: replace or push.
    * @returns {Object} Builder instance.
    */
   function createConditionBuilder(options) {
     var fields;
+    var initialValue;
     var locale;
     var target;
+    var urlValue;
+    var urlSync;
     var instance;
 
     _assertObject(options, 'options');
     target = _resolveElement(options.target);
     fields = _normalizeFields(options.fields || []);
     locale = options.locale ? _mergeObject(DEFAULT_LOCALE, options.locale) : state.locale;
+    urlSync = _normalizeUrlSyncOptions(options.urlSync, options);
+    initialValue = options.value;
+
+    if (urlSync.enabled && urlSync.readOnInit) {
+      urlValue = _readValueFromLocation(urlSync.pathKey);
+      if (urlValue !== null) {
+        initialValue = urlValue;
+      }
+    }
 
     instance = {
       version: VERSION,
       target: target,
       fields: fields,
-      root: _normalizeValue(options.value, fields),
+      root: _normalizeValue(initialValue, fields),
       locale: locale,
       lang: typeof options.lang === 'string' ? options.lang : 'ja',
       onChange: options.onChange,
+      urlSync: urlSync,
+      _grusPopStateHandler: null,
 
       /**
        * Adds a new condition to a group.
@@ -934,6 +1258,30 @@
       },
 
       /**
+       * Writes the current condition tree to the URL path.
+       * @returns {Object} Builder instance.
+       */
+      syncUrl: function () {
+        _writeValueToLocation(this, this.getValue());
+        return this;
+      },
+
+      /**
+       * Loads a condition tree from the current URL path.
+       * @returns {boolean} Whether a URL value was loaded.
+       */
+      loadFromUrl: function () {
+        var value = _readValueFromLocation(this.urlSync.pathKey);
+        if (value === null) {
+          return false;
+        }
+        this.root = _normalizeValue(value, this.fields);
+        this.render();
+        _emitChange(this, false);
+        return true;
+      },
+
+      /**
        * Re-renders the builder.
        * @returns {Object} Builder instance.
        */
@@ -947,11 +1295,13 @@
        * @returns {void}
        */
       destroy: function () {
+        _unbindPopState(this);
         _clearElement(this.target);
       }
     };
 
     instance.render();
+    _bindPopState(instance);
     return instance;
   }
 
@@ -982,6 +1332,11 @@
     createConditionBuilder: createConditionBuilder,
     validateFields: validateFields,
     validateValue: validateValue,
+    encodeValue: encodeValue,
+    decodeValue: decodeValue,
+    parseValueFromPath: parseValueFromPath,
+    createPathWithValue: createPathWithValue,
+    removeValueFromPath: removeValueFromPath,
     loadJson: loadJson,
     setLocale: setLocale,
     getLocale: getLocale,
