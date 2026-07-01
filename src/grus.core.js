@@ -1,7 +1,7 @@
 (function (global) {
   'use strict';
 
-  var VERSION = '0.3.0';
+  var VERSION = '0.4.0';
   var ROOT_PATH = [];
   var DEFAULT_LOCALE = {
     ui: {

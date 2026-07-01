@@ -10,7 +10,7 @@
   <div id="builder"></div>
   <pre id="output"></pre>
 
-  <script src="https://cdn.jsdelivr.net/gh/innoo-net/grus@master/dist/grus.loader.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/innoo-net/grus@master/dist/grus.loader.js?v=20260701c"></script>
   <script>
     var grusFields = [
       { key: 'keyword', label: { ja: 'キーワード', en: 'Keyword' }, type: 'text' },
@@ -24,6 +24,10 @@
         ]
       }
     ];
+
+    console.log('grus loader:', GrusLoader.resolveLoaderSrc());
+    console.log('grus core:', GrusLoader.resolveCoreUrl());
+    console.log('grus locales:', GrusLoader.resolveLocaleBaseUrl());
 
     GrusLoader.load({
       lang: 'ja',
@@ -39,6 +43,9 @@
         builder.addCondition();
       }
       document.getElementById('output').textContent = JSON.stringify(builder.getValue(), null, 2);
+    }).catch(function (error) {
+      console.error(error);
+      document.getElementById('output').textContent = String(error && error.message ? error.message : error);
     });
   </script>
 </body>

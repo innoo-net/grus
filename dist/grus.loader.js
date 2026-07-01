@@ -7,14 +7,6 @@
   var CORE_FILE_NAME = 'grus.core.js';
 
   /**
-   * Returns the currently executing script element.
-   * @returns {HTMLScriptElement|null} Current script element.
-   */
-  function _getCurrentScript() {
-    return document.currentScript || null;
-  }
-
-  /**
    * Checks whether a value is a non-empty string.
    * @param {*} value Value to check.
    * @returns {boolean} Whether the value is a non-empty string.
@@ -40,6 +32,14 @@
    */
   function _stringOrFallback(value, fallbackValue) {
     return _isString(value) ? value : fallbackValue;
+  }
+
+  /**
+   * Returns the currently executing script element.
+   * @returns {HTMLScriptElement|null} Current script element.
+   */
+  function _getCurrentScript() {
+    return document.currentScript || null;
   }
 
   /**
@@ -72,7 +72,13 @@
     if (_isLoaderSrc(_getScriptSrc(script))) {
       return true;
     }
-    return Boolean(script.dataset && (script.dataset.grusAuto || script.dataset.grusTarget || script.dataset.grusCoreUrl));
+    return Boolean(script.dataset && (
+      script.dataset.grusAuto ||
+      script.dataset.grusTarget ||
+      script.dataset.grusCoreUrl ||
+      script.dataset.grusFieldsUrl ||
+      script.dataset.grusFieldsVar
+    ));
   }
 
   /**
@@ -178,10 +184,11 @@
 
   /**
    * Resolves the asset base URL from the loader script URL.
+   * @param {HTMLScriptElement|null=} script Loader script element.
    * @returns {string} Asset base URL.
    */
-  function _resolveAssetBaseUrl() {
-    var src = _resolveLoaderSrc();
+  function _resolveAssetBaseUrl(script) {
+    var src = _getScriptSrc(script) || _resolveLoaderSrc();
     var baseUrl = _getBaseUrl(src);
 
     if (_isString(baseUrl)) {
@@ -192,19 +199,35 @@
   }
 
   /**
-   * Resolves the default core URL from the loader script URL.
+   * Resolves the default core URL.
+   * If the loader script URL is visible, grus.core.js is loaded from the same directory.
+   * If the host hides the script tag, the official jsDelivr CDN is used as a safe fallback.
+   * @param {HTMLScriptElement|null=} script Loader script element.
    * @returns {string} Core script URL.
    */
-  function _resolveDefaultCoreUrl() {
-    return _resolveUrl(CORE_FILE_NAME, _resolveAssetBaseUrl());
+  function _resolveDefaultCoreUrl(script) {
+    var baseUrl;
+
+    if (script && script.src) {
+      baseUrl = _getBaseUrl(script.src);
+      return _resolveUrl(CORE_FILE_NAME, baseUrl);
+    }
+
+    baseUrl = _resolveAssetBaseUrl(null);
+    if (_isString(baseUrl) && baseUrl !== DEFAULT_CDN_BASE_URL) {
+      return _resolveUrl(CORE_FILE_NAME, baseUrl);
+    }
+
+    return DEFAULT_CDN_BASE_URL + CORE_FILE_NAME;
   }
 
   /**
-   * Resolves the default locale base URL from the loader script URL.
+   * Resolves the default locale base URL.
+   * @param {HTMLScriptElement|null=} script Loader script element.
    * @returns {string} Locale base URL.
    */
-  function _resolveDefaultLocaleBaseUrl() {
-    var baseUrl = _resolveAssetBaseUrl();
+  function _resolveDefaultLocaleBaseUrl(script) {
+    var baseUrl = _resolveAssetBaseUrl(script || null);
     var cleanBaseUrl = _stripHashAndQuery(baseUrl);
 
     if (/\/dist\/$/.test(cleanBaseUrl)) {
@@ -327,6 +350,25 @@
   }
 
   /**
+   * Normalizes URL sync options for createConditionBuilder.
+   * @param {Object} options Loader options.
+   * @returns {boolean|Object} URL sync option.
+   */
+  function _createUrlSyncOption(options) {
+    if (options.urlSync && typeof options.urlSync === 'object') {
+      return options.urlSync;
+    }
+    if (options.urlSync === true) {
+      return {
+        enabled: true,
+        pathKey: options.urlPathKey || 'filter',
+        updateMode: options.urlUpdateMode || 'replace'
+      };
+    }
+    return false;
+  }
+
+  /**
    * Reads loader options from a script tag dataset.
    * @param {HTMLScriptElement|null} script Script tag.
    * @returns {Object} Loader options.
@@ -337,8 +379,8 @@
     return {
       lang: dataset.grusLang || 'ja',
       localeUrl: dataset.grusLocaleUrl || '',
-      localeBaseUrl: _stringOrFallback(dataset.grusLocaleBaseUrl, _resolveDefaultLocaleBaseUrl()),
-      coreUrl: _stringOrFallback(dataset.grusCoreUrl, _resolveDefaultCoreUrl()),
+      localeBaseUrl: _stringOrFallback(dataset.grusLocaleBaseUrl, _resolveDefaultLocaleBaseUrl(loaderScript)),
+      coreUrl: _stringOrFallback(dataset.grusCoreUrl, _resolveDefaultCoreUrl(loaderScript)),
       fieldsUrl: dataset.grusFieldsUrl || '',
       fieldsVar: dataset.grusFieldsVar || '',
       target: dataset.grusTarget || '',
@@ -350,7 +392,7 @@
   }
 
   /**
-   * Creates a builder when auto-mount options are provided.
+   * Creates a builder when mount options are provided.
    * @param {Object} options Loader options.
    * @returns {Promise<Object|null>} Builder instance or null.
    */
@@ -369,7 +411,7 @@
         lang: options.lang,
         locale: global.Grus.getLocale(),
         onChange: options.onChange,
-        urlSync: options.urlSync,
+        urlSync: _createUrlSyncOption(options),
         urlPathKey: options.urlPathKey,
         urlUpdateMode: options.urlUpdateMode
       });
@@ -399,15 +441,16 @@
     var options;
 
     _resolveLoaderSrc();
+    _loaderScript = _loaderScript || _findLoaderScript();
 
     scriptOptions = _readOptionsFromScript(_loaderScript);
     options = Object.assign({}, scriptOptions, userOptions || {});
 
     if (!_isString(options.coreUrl)) {
-      options.coreUrl = _resolveDefaultCoreUrl();
+      options.coreUrl = _resolveDefaultCoreUrl(_loaderScript);
     }
     if (!_isString(options.localeBaseUrl) && !_isString(options.localeUrl)) {
-      options.localeBaseUrl = _resolveDefaultLocaleBaseUrl();
+      options.localeBaseUrl = _resolveDefaultLocaleBaseUrl(_loaderScript);
     }
 
     return _ensureCore(options.coreUrl)
@@ -432,14 +475,15 @@
   global.GrusLoader = {
     load: load,
     resolveCoreUrl: function () {
-      return _resolveDefaultCoreUrl();
+      return _resolveDefaultCoreUrl(_loaderScript || _findLoaderScript());
     },
     resolveLocaleBaseUrl: function () {
-      return _resolveDefaultLocaleBaseUrl();
+      return _resolveDefaultLocaleBaseUrl(_loaderScript || _findLoaderScript());
     },
     resolveLoaderSrc: function () {
       return _resolveLoaderSrc();
-    }
+    },
+    defaultCdnBaseUrl: DEFAULT_CDN_BASE_URL
   };
 
   _autoLoad();
